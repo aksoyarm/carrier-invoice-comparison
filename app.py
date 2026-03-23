@@ -21,15 +21,15 @@ def _build_totals_row(df: pd.DataFrame) -> dict:
         "Invoice Weight (raw)", "Invoice Weight (rounded)",
         "QS Weight (raw)", "QS Weight (rounded)",
         "Weight Difference", "Invoice Price",
-        "QS Revenue - DDP", "Price Difference",
+        "Revenue After DDP", "Price Difference",
     ]
     for col in sum_cols:
         if col in df.columns:
             row[col] = float(df[col].sum())
 
-    if "Invoice Price" in df.columns and "QS Revenue - DDP" in df.columns:
+    if "Invoice Price" in df.columns and "Revenue After DDP" in df.columns:
         total_inv = df["Invoice Price"].sum()
-        total_qs = df["QS Revenue - DDP"].sum()
+        total_qs = df["Revenue After DDP"].sum()
         if abs(total_qs) > 1e-9:
             row["Price % Change"] = (total_qs - total_inv) / abs(total_qs) * 100
         else:
@@ -107,7 +107,7 @@ if invoice_file and qs_file:
     col4.metric("Weight Discrepancies", summary.weight_discrepancy_count)
     col5.metric("Price Discrepancies", summary.price_discrepancy_count)
 
-    qs_label = "Total QS Revenue - DDP (TL)" if result.carrier in ("Aramex", "FedEx") else "Total QS Revenue - DDP"
+    qs_label = "Total Revenue After DDP (TL)" if result.carrier in ("Aramex", "FedEx") else "Total Revenue After DDP"
     col6, col7 = st.columns(2)
     col6.metric("Total Invoice Cost", f"{summary.total_invoice_cost:,.2f}")
     col7.metric(qs_label, f"{summary.total_qs_expected_cost:,.2f}")
@@ -118,8 +118,8 @@ if invoice_file and qs_file:
     sign = "+" if diff >= 0 else ""
     pct_sign = "+" if pct >= 0 else ""
     col8, col9 = st.columns(2)
-    col8.metric("Difference (QS - Invoice)", f"{sign}{diff:,.2f}")
-    col9.metric("Difference %", f"{pct_sign}{pct:,.2f}%")
+    col8.metric("Profit", f"{sign}{diff:,.2f}")
+    col9.metric("%Profit", f"{pct_sign}{pct:,.2f}%")
 
     st.divider()
 
@@ -137,7 +137,7 @@ if invoice_file and qs_file:
         "Invoice Weight (raw)", "Invoice Weight (rounded)",
         "QS Weight (raw)", "QS Weight (rounded)",
         "Weight Difference", "Invoice Price",
-        "QS Revenue - DDP", "Price Difference",
+        "Revenue After DDP", "Price Difference",
     ]
     for col in numeric_cols:
         if col in detail_df.columns:
@@ -183,7 +183,8 @@ if invoice_file and qs_file:
             weight_cols.insert(insert_pos, "Country")
         available = [c for c in weight_cols if c in weight_disc.columns]
         st.warning(f"{len(weight_disc)} orders with weight mismatch")
-        styled_w = weight_disc[available].style.apply(
+        weight_disc_sorted = weight_disc[available].sort_values("Weight Difference", ascending=True)
+        styled_w = weight_disc_sorted.style.apply(
             lambda row: ["background-color: #ffcccc"] * len(row), axis=1
         )
         st.dataframe(styled_w, use_container_width=True, hide_index=True)
@@ -201,18 +202,21 @@ if invoice_file and qs_file:
             lambda v: f"{v:.2f}%" if pd.notna(v) else ""
         )
 
-        price_cols = ["Waybill", "Invoice Price", "QS Revenue - DDP", "Price Difference", "Price % Change"]
+        price_cols = ["Waybill", "Invoice Price", "Revenue After DDP", "Price Difference", "Price % Change"]
         available = [c for c in price_cols if c in price_disc.columns]
+
+        # Sort by Price Difference before adding sum row
+        price_disc = price_disc.sort_values("Price Difference", ascending=True)
 
         # Add sum row
         total_inv = price_disc["Invoice Price"].sum()
         total_diff = price_disc["Price Difference"].sum()
-        total_qs_rev = price_disc["QS Revenue - DDP"].sum()
+        total_qs_rev = price_disc["Revenue After DDP"].sum()
         total_pct = f"{abs(total_diff) / total_qs_rev * 100:.2f}%" if total_qs_rev else ""
         sum_row = pd.DataFrame([{
             "Waybill": "TOTAL",
             "Invoice Price": total_inv,
-            "QS Revenue - DDP": price_disc["QS Revenue - DDP"].sum(),
+            "Revenue After DDP": price_disc["Revenue After DDP"].sum(),
             "Price Difference": total_diff,
             "Price % Change": total_pct,
         }])

@@ -134,7 +134,7 @@ class TestComparePriceExpected:
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
         # Expected TL = 3600 - 20 * 36 = 3600 - 720 = 2880, Invoice = 80
-        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert comp_df.iloc[0]["Revenue After DDP"] == 2880.0
         assert summary.price_discrepancy_count == 1
 
     def test_price_mismatch(self):
@@ -149,7 +149,7 @@ class TestComparePriceExpected:
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
         # Expected TL = 3600 - 20 * 36 = 2880, Invoice = 2880 → match
-        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert comp_df.iloc[0]["Revenue After DDP"] == 2880.0
         assert comp_df.iloc[0]["Price Difference"] == 0.0
         assert summary.price_discrepancy_count == 0
 
@@ -165,7 +165,7 @@ class TestComparePriceExpected:
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
         # Expected TL = 3600 - 20 * 36 = 2880
-        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert comp_df.iloc[0]["Revenue After DDP"] == 2880.0
         assert comp_df.iloc[0]["Price Difference"] == 0.0
         assert summary.total_qs_expected_cost == 2880.0
 
@@ -181,7 +181,7 @@ class TestComparePriceExpected:
         ])
         comp_df, summary, _, _ = compare(inv, qs, "Aramex")
         # Expected TL = 667.5 - 2.0 * 44.5 = 578.5
-        assert comp_df.iloc[0]["QS Revenue - DDP"] == 578.5
+        assert comp_df.iloc[0]["Revenue After DDP"] == 578.5
         assert comp_df.iloc[0]["Price Difference"] == 578.5 - 600.0
         assert summary.total_qs_expected_cost == 578.5
 

@@ -108,7 +108,7 @@ def compare(
         "weight_match": "Weight Match",
         "weight_difference": "Weight Difference",
         "price_raw": "Invoice Price",
-        "qs_expected_cost": "QS Revenue - DDP",
+        "qs_expected_cost": "Revenue After DDP",
         "price_difference": "Price Difference",
         "price_pct_change": "Price % Change",
     })
@@ -181,7 +181,7 @@ def export_to_excel(
             "Metric": [
                 "Total Waybills", "Matched", "Unmatched (Invoice)",
                 "Unmatched (QS)", "Weight Discrepancies", "Price Discrepancies",
-                "Total Invoice Cost", "Total QS Revenue - DDP",
+                "Total Invoice Cost", "Total Revenue After DDP",
             ],
             "Value": [
                 summary.total_waybills, summary.matched_count,
