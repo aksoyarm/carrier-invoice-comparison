@@ -62,7 +62,7 @@ def compare(
 
     # Price comparison: Invoice Price vs (Sevkiyat Bedeli - ddp_bedeli)
     # For Aramex: use TL values
-    if carrier == "Aramex":
+    if carrier in ("Aramex", "FedEx"):
         merged["qs_expected_cost"] = (
             merged["qs_ship_cost_tl"]
             - merged["qs_ddp_cost"].fillna(0) * merged["qs_ship_cost_rate"].fillna(0)
@@ -73,8 +73,8 @@ def compare(
     merged["price_difference"] = merged["qs_expected_cost"] - merged["price_raw"]
     merged["price_pct_change"] = merged.apply(
         lambda row: (
-            (row["price_difference"] / row["price_raw"] * 100)
-            if pd.notna(row["price_difference"]) and pd.notna(row["price_raw"]) and abs(row["price_raw"]) > 1e-9
+            (row["price_difference"] / row["qs_expected_cost"] * 100)
+            if pd.notna(row["price_difference"]) and pd.notna(row["qs_expected_cost"]) and abs(row["qs_expected_cost"]) > 1e-9
             else None
         ),
         axis=1,
@@ -90,6 +90,9 @@ def compare(
     ]
     if "destination" in merged.columns:
         output_cols.insert(1, "destination")
+    if "qs_country" in merged.columns:
+        insert_pos = 2 if "destination" in merged.columns else 1
+        output_cols.insert(insert_pos, "qs_country")
 
     available_cols = [c for c in output_cols if c in merged.columns]
     comparison_df = merged[available_cols].copy()
@@ -97,6 +100,7 @@ def compare(
     comparison_df = comparison_df.rename(columns={
         "waybill": "Waybill",
         "destination": "Destination",
+        "qs_country": "Country",
         "weight_raw": "Invoice Weight (raw)",
         "weight_rounded_invoice": "Invoice Weight (rounded)",
         "qs_weight_raw": "QS Weight (raw)",

@@ -1,11 +1,41 @@
 import pandas as pd
 import streamlit as st
+from st_aggrid import AgGrid, GridOptionsBuilder, GridUpdateMode, ColumnsAutoSizeMode
 
 from src.classifier import classify_carrier
 from src.parser import parse_invoice
 from src.aggregator import aggregate_invoice
 from src.qs_parser import parse_quicksight
 from src.comparator import compare, export_to_excel
+
+
+def _build_totals_row(df: pd.DataFrame) -> dict:
+    """Build a totals row dict for AG Grid pinnedBottomRowData."""
+    row = {"Waybill": "TOTAL"}
+
+    for col in ["Destination", "Country", "Weight Match"]:
+        if col in df.columns:
+            row[col] = ""
+
+    sum_cols = [
+        "Invoice Weight (raw)", "Invoice Weight (rounded)",
+        "QS Weight (raw)", "QS Weight (rounded)",
+        "Weight Difference", "Invoice Price",
+        "QS Revenue - DDP", "Price Difference",
+    ]
+    for col in sum_cols:
+        if col in df.columns:
+            row[col] = float(df[col].sum())
+
+    if "Invoice Price" in df.columns and "QS Revenue - DDP" in df.columns:
+        total_inv = df["Invoice Price"].sum()
+        total_qs = df["QS Revenue - DDP"].sum()
+        if abs(total_qs) > 1e-9:
+            row["Price % Change"] = (total_qs - total_inv) / abs(total_qs) * 100
+        else:
+            row["Price % Change"] = None
+
+    return row
 
 st.set_page_config(page_title="Carrier Invoice Comparison", layout="wide")
 st.title("Carrier Invoice Comparison")
@@ -77,29 +107,62 @@ if invoice_file and qs_file:
     col4.metric("Weight Discrepancies", summary.weight_discrepancy_count)
     col5.metric("Price Discrepancies", summary.price_discrepancy_count)
 
-    qs_label = "Total QS Revenue - DDP (TL)" if result.carrier == "Aramex" else "Total QS Revenue - DDP"
+    qs_label = "Total QS Revenue - DDP (TL)" if result.carrier in ("Aramex", "FedEx") else "Total QS Revenue - DDP"
     col6, col7 = st.columns(2)
     col6.metric("Total Invoice Cost", f"{summary.total_invoice_cost:,.2f}")
     col7.metric(qs_label, f"{summary.total_qs_expected_cost:,.2f}")
 
     # Difference: absolute and percentage
     diff = summary.total_qs_expected_cost - summary.total_invoice_cost
-    pct = (diff / summary.total_invoice_cost * 100) if summary.total_invoice_cost else 0
+    pct = (diff / summary.total_qs_expected_cost * 100) if summary.total_qs_expected_cost else 0
     sign = "+" if diff >= 0 else ""
+    pct_sign = "+" if pct >= 0 else ""
     col8, col9 = st.columns(2)
     col8.metric("Difference (QS - Invoice)", f"{sign}{diff:,.2f}")
-    col9.metric("Difference %", f"{sign}{pct:,.2f}%")
+    col9.metric("Difference %", f"{pct_sign}{pct:,.2f}%")
 
     st.divider()
 
-    # Detailed comparison table
+    # Detailed comparison table with AG Grid
     st.subheader("Detailed Comparison")
     detail_df = comparison_df.copy()
+
+    totals_row = _build_totals_row(detail_df)
+
+    gb = GridOptionsBuilder.from_dataframe(detail_df)
+    gb.configure_default_column(sortable=True, filter=True, resizable=True)
+    gb.configure_column("Waybill", pinned="left")
+
+    numeric_cols = [
+        "Invoice Weight (raw)", "Invoice Weight (rounded)",
+        "QS Weight (raw)", "QS Weight (rounded)",
+        "Weight Difference", "Invoice Price",
+        "QS Revenue - DDP", "Price Difference",
+    ]
+    for col in numeric_cols:
+        if col in detail_df.columns:
+            gb.configure_column(
+                col, type=["numericColumn"],
+                valueFormatter="x != null ? x.toFixed(2) : ''",
+            )
+
     if "Price % Change" in detail_df.columns:
-        detail_df["Price % Change"] = detail_df["Price % Change"].apply(
-            lambda v: f"{v:+.2f}%" if pd.notna(v) else ""
+        gb.configure_column(
+            "Price % Change", type=["numericColumn"],
+            valueFormatter="x != null ? x.toFixed(2) + '%' : ''",
         )
-    st.dataframe(detail_df, use_container_width=True, hide_index=True)
+
+    grid_options = gb.build()
+    grid_options["pinnedBottomRowData"] = [totals_row]
+
+    AgGrid(
+        detail_df,
+        gridOptions=grid_options,
+        update_mode=GridUpdateMode.NO_UPDATE,
+        columns_auto_size_mode=ColumnsAutoSizeMode.FIT_CONTENTS,
+        theme="streamlit",
+        height=500,
+    )
 
     st.divider()
 
@@ -115,6 +178,9 @@ if invoice_file and qs_file:
         ]
         if "Destination" in weight_disc.columns:
             weight_cols.insert(1, "Destination")
+        if "Country" in weight_disc.columns:
+            insert_pos = 2 if "Destination" in weight_disc.columns else 1
+            weight_cols.insert(insert_pos, "Country")
         available = [c for c in weight_cols if c in weight_disc.columns]
         st.warning(f"{len(weight_disc)} orders with weight mismatch")
         styled_w = weight_disc[available].style.apply(
@@ -132,7 +198,7 @@ if invoice_file and qs_file:
 
         # Format Price % Change as string with % sign
         price_disc["Price % Change"] = price_disc["Price % Change"].apply(
-            lambda v: f"{v:+.2f}%" if pd.notna(v) else ""
+            lambda v: f"{v:.2f}%" if pd.notna(v) else ""
         )
 
         price_cols = ["Waybill", "Invoice Price", "QS Revenue - DDP", "Price Difference", "Price % Change"]
@@ -141,7 +207,8 @@ if invoice_file and qs_file:
         # Add sum row
         total_inv = price_disc["Invoice Price"].sum()
         total_diff = price_disc["Price Difference"].sum()
-        total_pct = f"{total_diff / total_inv * 100:+.2f}%" if total_inv else ""
+        total_qs_rev = price_disc["QS Revenue - DDP"].sum()
+        total_pct = f"{abs(total_diff) / total_qs_rev * 100:.2f}%" if total_qs_rev else ""
         sum_row = pd.DataFrame([{
             "Waybill": "TOTAL",
             "Invoice Price": total_inv,

@@ -20,8 +20,12 @@ QS_COLUMN_MAPPINGS = {
     "qs_carrier":        ("Taşıyıcı", "X"),
 }
 
+OPTIONAL_COLUMN_MAPPINGS = {
+    "qs_country":        ("Ülke", "C"),
+}
+
 NUMERIC_COLUMNS = {"qs_weight_raw", "qs_cust_price", "qs_ship_cost", "qs_ddp_cost", "qs_ship_cost_rate", "qs_ship_cost_tl"}
-STRING_COLUMNS = {"qs_waybill", "qs_customer", "qs_service", "qs_cust_price_ccy", "qs_ship_cost_ccy", "qs_carrier"}
+STRING_COLUMNS = {"qs_waybill", "qs_customer", "qs_service", "qs_cust_price_ccy", "qs_ship_cost_ccy", "qs_carrier", "qs_country"}
 
 
 def parse_quicksight(file_bytes: bytes) -> pd.DataFrame:
@@ -50,6 +54,22 @@ def parse_quicksight(file_bytes: bytes) -> pd.DataFrame:
                 f"(header: '{header_name}', fallback: '{fallback_letter}')"
             )
         resolved[std_name] = col
+
+    # Resolve optional columns by header name only (no positional fallback)
+    for std_name, (header_name, _) in OPTIONAL_COLUMN_MAPPINGS.items():
+        header_lower = header_name.lower().strip()
+        matched_col = None
+        for col_name in df.columns:
+            if str(col_name).strip().lower() == header_lower:
+                matched_col = col_name
+                break
+        if matched_col is None:
+            for col_name in df.columns:
+                if header_lower in str(col_name).strip().lower():
+                    matched_col = col_name
+                    break
+        if matched_col is not None:
+            resolved[std_name] = matched_col
 
     # Build output DataFrame
     out = pd.DataFrame()

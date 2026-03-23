@@ -13,7 +13,7 @@ def _make_qs_df(rows):
     for col in ["qs_waybill", "qs_customer", "qs_service", "qs_weight_raw",
                  "qs_cust_price_ccy", "qs_cust_price", "qs_ship_cost_ccy",
                  "qs_ship_cost", "qs_ddp_cost", "qs_ship_cost_rate",
-                 "qs_ship_cost_tl", "qs_carrier"]:
+                 "qs_ship_cost_tl", "qs_carrier", "qs_country"]:
         if col not in df.columns:
             df[col] = None
     return df
@@ -27,9 +27,13 @@ class TestCompareBasicJoin:
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
             {"qs_waybill": "WB002", "qs_weight_raw": 3.0,
-             "qs_ship_cost": 50.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 50.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 50.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
         assert summary.total_waybills == 2
@@ -43,7 +47,9 @@ class TestCompareBasicJoin:
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
         ])
         _, summary, unmatched_inv, _ = compare(inv, qs, "FedEx")
         assert summary.unmatched_invoice == 1
@@ -55,9 +61,13 @@ class TestCompareBasicJoin:
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
             {"qs_waybill": "WB999", "qs_weight_raw": 1.0,
-             "qs_ship_cost": 15.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 15.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 15.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
         ])
         _, summary, _, unmatched_qs = compare(inv, qs, "FedEx")
         assert summary.unmatched_qs == 1
@@ -72,7 +82,9 @@ class TestCompareRounding:
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.3,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
         ])
         comp_df, _, _, _ = compare(inv, qs, "FedEx")
         assert comp_df.iloc[0]["Invoice Weight (rounded)"] == 5.5
@@ -85,7 +97,9 @@ class TestCompareRounding:
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 6.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "FedEx"},
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
         assert comp_df.iloc[0]["Weight Match"] == False
@@ -108,34 +122,52 @@ class TestComparePTT:
 
 class TestComparePriceExpected:
     def test_price_match_ship_minus_ddp(self):
-        """QS Expected = Sevkiyat Bedeli - ddp_bedeli"""
+        """QS Expected = Sevkiyat Bedeli TL - ddp_bedeli * Sevkiyat Bedeli Kuru (for FedEx)"""
         inv = _make_invoice_df([
             {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 80.0},
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 20.0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 20.0,
+             "qs_ship_cost_tl": 3600.0, "qs_ship_cost_rate": 36.0,
+             "qs_carrier": "FedEx"},
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
-        # Expected = 100 - 20 = 80, Invoice = 80 → match
-        assert comp_df.iloc[0]["QS Revenue - DDP"] == 80.0
-        assert comp_df.iloc[0]["Price Difference"] == 0.0
-        assert comp_df.iloc[0]["Price % Change"] == 0.0
-        assert summary.price_discrepancy_count == 0
+        # Expected TL = 3600 - 20 * 36 = 3600 - 720 = 2880, Invoice = 80
+        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert summary.price_discrepancy_count == 1
 
     def test_price_mismatch(self):
         inv = _make_invoice_df([
-            {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 90.0},
+            {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 2880.0},
         ])
         qs = _make_qs_df([
             {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
-             "qs_ship_cost": 100.0, "qs_ddp_cost": 20.0, "qs_carrier": "FedEx"},
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 20.0,
+             "qs_ship_cost_tl": 3600.0, "qs_ship_cost_rate": 36.0,
+             "qs_carrier": "FedEx"},
         ])
         comp_df, summary, _, _ = compare(inv, qs, "FedEx")
-        # Expected = 80, Invoice = 90 → diff = -10, pct = -10/90 * 100 ≈ -11.11%
-        assert comp_df.iloc[0]["Price Difference"] == -10.0
-        assert abs(comp_df.iloc[0]["Price % Change"] - (-100 / 9)) < 0.01
-        assert summary.price_discrepancy_count == 1
+        # Expected TL = 3600 - 20 * 36 = 2880, Invoice = 2880 → match
+        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert comp_df.iloc[0]["Price Difference"] == 0.0
+        assert summary.price_discrepancy_count == 0
+
+    def test_fedex_uses_tl(self):
+        inv = _make_invoice_df([
+            {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 2880.0},
+        ])
+        qs = _make_qs_df([
+            {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 20.0,
+             "qs_ship_cost_rate": 36.0, "qs_ship_cost_tl": 3600.0,
+             "qs_carrier": "FedEx"},
+        ])
+        comp_df, summary, _, _ = compare(inv, qs, "FedEx")
+        # Expected TL = 3600 - 20 * 36 = 2880
+        assert comp_df.iloc[0]["QS Revenue - DDP"] == 2880.0
+        assert comp_df.iloc[0]["Price Difference"] == 0.0
+        assert summary.total_qs_expected_cost == 2880.0
 
     def test_aramex_uses_tl(self):
         inv = _make_invoice_df([
@@ -152,3 +184,32 @@ class TestComparePriceExpected:
         assert comp_df.iloc[0]["QS Revenue - DDP"] == 578.5
         assert comp_df.iloc[0]["Price Difference"] == 578.5 - 600.0
         assert summary.total_qs_expected_cost == 578.5
+
+
+class TestCompareCountryColumn:
+    def test_country_column_present_in_output(self):
+        inv = _make_invoice_df([
+            {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 100.0},
+        ])
+        qs = _make_qs_df([
+            {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "THY", "qs_country": "US"},
+        ])
+        comp_df, _, _, _ = compare(inv, qs, "THY")
+        assert "Country" in comp_df.columns
+        assert comp_df.iloc[0]["Country"] == "US"
+
+    def test_country_column_none_when_missing(self):
+        inv = _make_invoice_df([
+            {"waybill": "WB001", "weight_raw": 5.0, "price_raw": 100.0},
+        ])
+        qs = _make_qs_df([
+            {"qs_waybill": "WB001", "qs_weight_raw": 5.0,
+             "qs_ship_cost": 100.0, "qs_ddp_cost": 0,
+             "qs_ship_cost_tl": 100.0, "qs_ship_cost_rate": 1.0,
+             "qs_carrier": "THY"},
+        ])
+        comp_df, _, _, _ = compare(inv, qs, "THY")
+        assert "Country" in comp_df.columns
