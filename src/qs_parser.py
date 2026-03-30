@@ -17,6 +17,7 @@ QS_COLUMN_MAPPINGS = {
     "qs_ddp_cost":       ("ddp_bedeli", "AF"),
     "qs_ship_cost_rate": ("Sevkiyat Bedeli Kuru", "AG"),
     "qs_ship_cost_tl":   ("Sevkiyat Bedeli TL", "AH"),
+    "qs_payment_date":   ("Ödeme Tarihi", "AI"),
     "qs_carrier":        ("Taşıyıcı", "X"),
 }
 
@@ -26,6 +27,7 @@ OPTIONAL_COLUMN_MAPPINGS = {
 
 NUMERIC_COLUMNS = {"qs_weight_raw", "qs_cust_price", "qs_ship_cost", "qs_ddp_cost", "qs_ship_cost_rate", "qs_ship_cost_tl"}
 STRING_COLUMNS = {"qs_waybill", "qs_customer", "qs_service", "qs_cust_price_ccy", "qs_ship_cost_ccy", "qs_carrier", "qs_country"}
+DATE_COLUMNS = {"qs_payment_date"}
 
 
 def parse_quicksight(file_bytes: bytes) -> pd.DataFrame:
@@ -76,6 +78,8 @@ def parse_quicksight(file_bytes: bytes) -> pd.DataFrame:
     for std_name, actual_col in resolved.items():
         if std_name in NUMERIC_COLUMNS:
             out[std_name] = df[actual_col].apply(parse_turkish_number)
+        elif std_name in DATE_COLUMNS:
+            out[std_name] = pd.to_datetime(df[actual_col], dayfirst=True, errors='coerce')
         elif std_name in STRING_COLUMNS:
             out[std_name] = df[actual_col].apply(
                 lambda v: strip_whitespace(str(v)) if pd.notna(v) else None

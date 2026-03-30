@@ -198,6 +198,9 @@ The universal rounding function: `round_up(value, interval)` — always rounds U
 | Shipping Cost Currency | `Sevkiyat Bedeli Döviz Cinsi` (AD) | Currency context |
 | Shipping Cost | `Sevkiyat Bedeli` (AE) | Navlungo's cost to carrier |
 | DDP Cost | `ddp_bedeli` (AF) | DDP component |
+| Shipping Cost Rate | `Sevkiyat Bedeli Kuru` (AG) | Exchange rate used by Navlungo |
+| Shipping Cost TL | `Sevkiyat Bedeli TL` (AH) | Shipping cost in TL |
+| Payment Date | `Ödeme Tarihi` (AI) | Date used for TCMB rate lookup |
 | Carrier | `Taşıyıcı` (X) | Reference only (not used for classification) |
 
 ### Number Formatting
@@ -230,6 +233,11 @@ invoice_data.waybill → qs_data.Konşimento
 | QS Shipping Cost | QS `Sevkiyat Bedeli` |
 | Margin (Customer - Invoice) | Gönderi Bedeli - Invoice Price |
 | Cost Difference (Shipping - Invoice) | Sevkiyat Bedeli - Invoice Price |
+| Payment Date | QS `Ödeme Tarihi` |
+| Currency | QS `Sevkiyat Bedeli Döviz Cinsi` |
+| QS Rate | QS `Sevkiyat Bedeli Kuru` |
+| TCMB Rate | Fetched from TCMB API (Forex Selling) |
+| Rate Difference | TCMB Rate - QS Rate |
 
 ---
 
@@ -270,11 +278,13 @@ project/
 │   ├── aggregator.py         # Multi-row aggregation (UPS/FedEx)
 │   ├── qs_parser.py          # QuickSight data parsing
 │   ├── comparator.py         # Join + comparison logic
+│   ├── tcmb.py               # TCMB exchange rate fetcher
 │   └── utils.py              # Number format handling, helpers
 └── tests/
     ├── test_classifier.py
     ├── test_rounding.py
-    └── test_comparator.py
+    ├── test_comparator.py
+    └── test_tcmb.py
 ```
 
 ---
@@ -289,3 +299,25 @@ project/
 - **Missing waybills:** Report which invoice waybills weren't found in QS and vice versa
 - **Currency mismatch:** Show currency alongside all monetary values — do NOT convert currencies in V1
 - **Case-insensitive matching:** Country names, carrier names, customer emails
+
+---
+
+## 10. TCMB Exchange Rate Comparison
+
+Fetches official TCMB (Central Bank of Turkey) Forex Selling rates for comparison with the internal QS rate (`Sevkiyat Bedeli Kuru`). **Display-only** — does NOT affect Revenue After DDP calculations.
+
+### API
+- URL pattern: `https://www.tcmb.gov.tr/kurlar/{YYYYMM}/{DDMMYYYY}.xml`
+- No authentication required
+- Rate type: **Forex Selling (Döviz Satış)**
+- Currency determined per row from QS `Sevkiyat Bedeli Döviz Cinsi` (AD)
+
+### Weekend/Holiday Fallback
+TCMB does not publish rates on weekends or Turkish holidays. If the payment date returns 404, the system falls back up to 7 days to find the most recent business day's rate.
+
+### Caching
+Rates are cached in-memory by date. One API call per unique date retrieves all currencies, so subsequent lookups for different currencies on the same date are instant.
+
+### Special Cases
+- TRY/TL currency → returns `1.0` (no API call)
+- API failure or unknown currency → returns `None` (shown as blank in dashboard)

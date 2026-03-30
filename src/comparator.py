@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from src.tcmb import fetch_tcmb_rate
 from src.weight_rounding import apply_rounding
 
 
@@ -80,6 +81,12 @@ def compare(
         axis=1,
     )
 
+    # TCMB exchange rate comparison
+    merged["tcmb_rate"] = merged.apply(
+        lambda row: _safe_tcmb_rate(row), axis=1
+    )
+    merged["rate_difference"] = merged["tcmb_rate"] - merged["qs_ship_cost_rate"]
+
     # Build comparison output
     output_cols = [
         "waybill", "weight_raw", "weight_rounded_invoice",
@@ -87,6 +94,8 @@ def compare(
         "weight_match", "weight_difference",
         "price_raw", "qs_expected_cost",
         "price_difference", "price_pct_change",
+        "qs_payment_date", "qs_ship_cost_ccy",
+        "qs_ship_cost_rate", "tcmb_rate", "rate_difference",
     ]
     if "destination" in merged.columns:
         output_cols.insert(1, "destination")
@@ -111,6 +120,11 @@ def compare(
         "qs_expected_cost": "Revenue After DDP",
         "price_difference": "Price Difference",
         "price_pct_change": "Price % Change",
+        "qs_payment_date": "Payment Date",
+        "qs_ship_cost_ccy": "Currency",
+        "qs_ship_cost_rate": "QS Rate",
+        "tcmb_rate": "TCMB Rate",
+        "rate_difference": "Rate Difference",
     })
 
     # Identify unmatched
@@ -147,6 +161,18 @@ def compare(
     )
 
     return comparison_df, summary, unmatched_invoice, unmatched_qs
+
+
+def _safe_tcmb_rate(row: pd.Series) -> float | None:
+    """Fetch TCMB rate for a row's payment date and shipping cost currency."""
+    payment_date = row.get("qs_payment_date")
+    currency = row.get("qs_ship_cost_ccy")
+    if pd.isna(payment_date) or not currency or pd.isna(currency):
+        return None
+    try:
+        return fetch_tcmb_rate(payment_date.date(), str(currency).strip())
+    except Exception:
+        return None
 
 
 def _safe_round(carrier: str, weight, row: pd.Series) -> float | None:

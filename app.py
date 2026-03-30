@@ -13,7 +13,8 @@ def _build_totals_row(df: pd.DataFrame) -> dict:
     """Build a totals row dict for AG Grid pinnedBottomRowData."""
     row = {"Waybill": "TOTAL"}
 
-    for col in ["Destination", "Country", "Weight Match"]:
+    for col in ["Destination", "Country", "Weight Match",
+                "Currency", "Payment Date", "QS Rate", "TCMB Rate", "Rate Difference"]:
         if col in df.columns:
             row[col] = ""
 
@@ -47,7 +48,7 @@ with st.sidebar:
     qs_file = st.file_uploader("QuickSight Export", type=["xlsx", "xls"])
 
 if invoice_file and qs_file:
-    with st.spinner("Classifying carrier and processing data..."):
+    with st.spinner("Classifying carrier, processing data, and fetching TCMB rates..."):
         # Step 1: Classify carrier
         try:
             invoice_bytes = invoice_file.getvalue()
@@ -145,6 +146,19 @@ if invoice_file and qs_file:
                 col, type=["numericColumn"],
                 valueFormatter="x != null ? x.toFixed(2) : ''",
             )
+
+    rate_cols = ["QS Rate", "TCMB Rate", "Rate Difference"]
+    for col in rate_cols:
+        if col in detail_df.columns:
+            gb.configure_column(
+                col, type=["numericColumn"],
+                valueFormatter="x != null ? x.toFixed(4) : ''",
+            )
+
+    if "Payment Date" in detail_df.columns:
+        detail_df["Payment Date"] = detail_df["Payment Date"].apply(
+            lambda v: v.strftime("%Y-%m-%d") if pd.notna(v) else ""
+        )
 
     if "Price % Change" in detail_df.columns:
         gb.configure_column(
